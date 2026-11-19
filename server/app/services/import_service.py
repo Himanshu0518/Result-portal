@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 
 from sqlalchemy.orm import Session
 
@@ -23,11 +23,20 @@ def _sha256(raw_bytes: bytes) -> str:
     return hashlib.sha256(raw_bytes).hexdigest()
 
 
+ProgressCallback = Callable[[int, int], None]
+
+# Flush every N writes so a very large file does not build one enormous
+# SQLAlchemy identity map.  The surrounding transaction is still atomic.
+WRITE_BATCH_SIZE = 500
+LOOKUP_BATCH_SIZE = 500
+
+
 def persist_import(
     db: Session,
     raw_bytes: bytes,
     filename: str,
     pipeline_result: PipelineResult,
+    on_progress: Optional[ProgressCallback] = None,
 ) -> Import:
     """
     Persist the import summary and all errors.
@@ -75,6 +84,9 @@ def persist_import(
                 message=err.message,
             ))
         db.commit()
+        if on_progress is not None:
+            total = len(pipeline_result.valid_rows)
+            on_progress(total, total)
         return import_record
 
     # --- New import ---
@@ -83,17 +95,19 @@ def persist_import(
     # (The CHECK constraint ck_imports_counts_add_up fires on INSERT, not on
     # a later UPDATE, so we must supply correct values from the start.)
 
-    # Fetch all existing students for the valid IDs in one query.
+    # Fetch existing students in chunks.  A single IN (...) with 50k ids blows
+    # past SQLite's bound-variable limit, and a large file is exactly what this
+    # background pipeline exists to support.
     valid_ids = [r.student_id for r in pipeline_result.valid_rows]
-    if valid_ids:
-        existing_students: dict[str, Student] = {
+    existing_students: dict[str, Student] = {}
+    for start in range(0, len(valid_ids), LOOKUP_BATCH_SIZE):
+        chunk = valid_ids[start:start + LOOKUP_BATCH_SIZE]
+        existing_students.update({
             s.student_id: s
             for s in db.query(Student)
-            .filter(Student.student_id.in_(valid_ids))
+            .filter(Student.student_id.in_(chunk))
             .all()
-        }
-    else:
-        existing_students = {}
+        })
 
     # Pass 1: count new / updated / unchanged without touching the DB yet.
     new_count = 0
@@ -143,7 +157,8 @@ def persist_import(
     db.flush()  # satisfies the CHECK constraint; gets import_record.id
 
     # Pass 3: apply the upserts now that we have import_record.id.
-    for row in pipeline_result.valid_rows:
+    total_to_write = len(pipeline_result.valid_rows)
+    for index, row in enumerate(pipeline_result.valid_rows, start=1):
         sid = row.student_id
         if sid in existing_students:
             existing_s = existing_students[sid]
@@ -188,6 +203,11 @@ def persist_import(
                 last_import_id=import_record.id,
             ))
 
+        if index % WRITE_BATCH_SIZE == 0:
+            db.flush()
+            if on_progress is not None:
+                on_progress(index, total_to_write)
+
     # Persist all row errors.
     for err in pipeline_result.errors:
         db.add(ImportErrorModel(
@@ -200,4 +220,6 @@ def persist_import(
         ))
 
     db.commit()
+    if on_progress is not None:
+        on_progress(total_to_write, total_to_write)
     return import_record

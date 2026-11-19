@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Optional
+from typing import Callable, Optional
 
 from .decode import decode_file
-from .parser import parse_csv, REQUIRED_COLUMNS
+from .parser import count_data_rows, parse_csv, REQUIRED_COLUMNS
 from .validators import (
     validate_student_id,
     validate_full_name,
@@ -60,11 +60,15 @@ class PipelineResult:
 
 SUBJECT_FIELDS = ["maths", "science", "english", "social_studies", "second_language"]
 
+# Called with (rows_processed_so_far, estimated_total_rows).
+ProgressCallback = Callable[[int, int], None]
+
 
 def process_file(
     raw_bytes: bytes,
     filename: str,
     today: Optional[date] = None,
+    on_progress: Optional[ProgressCallback] = None,
 ) -> PipelineResult:
     """
     Full pipeline: decode -> parse -> validate -> dedupe.
@@ -77,6 +81,12 @@ def process_file(
 
     # 2. Parse header + get row iterator.
     _header, row_iter = parse_csv(text)
+
+    # Progress is estimated from a cheap pre-count; the exact total is only
+    # known after validation.  Counting is skipped when nobody is listening.
+    estimated_rows = count_data_rows(text) if on_progress is not None else 0
+    if on_progress is not None:
+        on_progress(0, estimated_rows)
 
     result = PipelineResult(encoding_note=encoding_note)
 
@@ -181,7 +191,13 @@ def process_file(
             second_language=subject_values["second_language"],
         ))
 
+        if on_progress is not None and result.rows_read % 250 == 0:
+            on_progress(result.rows_read, estimated_rows)
+
     if not had_any_data_row:
         raise ValueError("The file contains only a header row and no student data.")
+
+    if on_progress is not None:
+        on_progress(result.rows_read, result.rows_read)
 
     return result

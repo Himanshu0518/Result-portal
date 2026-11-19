@@ -34,7 +34,7 @@ In ``main.py``:
 Usage
 -----
     raise NotFoundError(f"Student '{student_id}' not found.")
-    raise BadRequestError("File exceeds the 10 MB size limit.", code="FILE_TOO_LARGE")
+    raise BadRequestError("The uploaded file could not be processed.", code="FILE_UNREADABLE")
     raise ValidationError("Validation failed.", details=[{"field": "email", "message": "Invalid format."}])
 """
 from __future__ import annotations

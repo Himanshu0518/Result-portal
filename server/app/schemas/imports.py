@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -40,3 +40,18 @@ class ImportCreateResponse(BaseModel):
 
     summary: ImportSummarySchema
     first_errors: list[ImportErrorSchema]
+
+
+class ImportJobSchema(BaseModel):
+    job_id: str
+    filename: str
+    size_bytes: int
+    status: Literal["queued", "processing", "completed", "failed"]
+    stage: Literal["queued", "validating", "saving", "completed", "failed"]
+    progress: int
+    processed_rows: int
+    total_rows: Optional[int] = None
+    summary: Optional[ImportSummarySchema] = None
+    error: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime

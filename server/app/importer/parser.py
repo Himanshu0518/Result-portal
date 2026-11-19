@@ -34,6 +34,25 @@ def _normalise_header(name: str) -> str:
     return name.strip().lower().replace(" ", "")
 
 
+def _is_skippable_row(raw_row: list[str]) -> bool:
+    """Blank / all-whitespace rows are skipped and not counted."""
+    return not any(cell.strip() for cell in raw_row) and len(raw_row) <= 1
+
+
+def count_data_rows(text: str) -> int:
+    """Count data rows using the same rules as :func:`parse_csv`.
+
+    Used only to estimate progress before validation runs.  The real count is
+    always taken from ``PipelineResult.rows_read`` once processing finishes.
+    """
+    reader = csv.reader(io.StringIO(text, newline=""))
+    try:
+        next(reader)
+    except StopIteration:
+        return 0
+    return sum(1 for raw_row in reader if not _is_skippable_row(raw_row))
+
+
 def parse_csv(
     text: str,
 ) -> tuple[list[str], Iterator[tuple[int, list[str], dict, int]]]:
@@ -98,7 +117,7 @@ def parse_csv(
         for raw_row in reader:
             line_number += 1
             # Blank / all-whitespace row: advance line number, skip.
-            if not any(cell.strip() for cell in raw_row) and len(raw_row) <= 1:
+            if _is_skippable_row(raw_row):
                 continue
             yield line_number, raw_row, col_index, num_expected
 
