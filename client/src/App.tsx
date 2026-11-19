@@ -9,13 +9,12 @@ export default function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        {/* Redirect root to /students */}
         <Route index element={<Navigate to="/students" replace />} />
         <Route path="import" element={<ImportPage />} />
         <Route path="students" element={<StudentsPage />} />
         <Route path="students/:studentId" element={<StudentReportPage />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
-      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
 }
