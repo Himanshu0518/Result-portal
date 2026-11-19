@@ -7,17 +7,17 @@ from app.core import (
     validation_error_handler,
     unhandled_error_handler,
 )
+from app.api import router as api_router
 
 app = FastAPI(title="Result Portal API")
 
 # ── Exception handlers ────────────────────────────────────────────────────────
-# All ApiError subclasses (NotFoundError, BadRequestError, etc.)
 app.add_exception_handler(ApiError, api_error_handler)
-# Pydantic / FastAPI request-body validation failures
 app.add_exception_handler(RequestValidationError, validation_error_handler)
-# Anything else — log the traceback, return a generic 500
 app.add_exception_handler(Exception, unhandled_error_handler)
 
+# ── Routers ───────────────────────────────────────────────────────────────────
+app.include_router(api_router, prefix="/api")
 
 # ── Health check ──────────────────────────────────────────────────────────────
 @app.get("/api/health", tags=["health"])
