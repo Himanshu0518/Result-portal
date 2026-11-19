@@ -121,37 +121,14 @@ export type ImportResult = {
   first_errors: ImportRowError[]
 }
 
-export type ImportJobStatus = 'queued' | 'processing' | 'completed' | 'failed'
-export type ImportJobStage = 'queued' | 'validating' | 'saving' | 'completed' | 'failed'
-
-export type ImportJob = {
-  job_id: string
-  filename: string
-  size_bytes: number
-  status: ImportJobStatus
-  stage: ImportJobStage
-  progress: number
-  processed_rows: number
-  total_rows: number | null
-  summary: ImportSummary | null
-  error: string | null
-  created_at: string
-  updated_at: string
-}
-
-/** Queues an import and returns immediately with a pollable job. */
 export function uploadCsv(file: File) {
   const formData = new FormData()
   formData.append('file', file)
 
-  return request<ImportJob>('/imports', {
+  return request<ImportResult>('/imports', {
     method: 'POST',
     body: formData,
   })
-}
-
-export function fetchImportJob(jobId: string, signal?: AbortSignal) {
-  return request<ImportJob>(`/imports/jobs/${encodeURIComponent(jobId)}`, { signal })
 }
 
 export function fetchImportErrors(

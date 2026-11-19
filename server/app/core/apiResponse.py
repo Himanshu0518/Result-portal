@@ -83,16 +83,6 @@ class ApiResponse:
         return cls._build(status_code=201, data=data, message=message)
 
     @classmethod
-    def accepted(
-        cls,
-        data: Any = None,
-        *,
-        message: str = "",
-    ) -> JSONResponse:
-        """202 Accepted — work was queued for background processing."""
-        return cls._build(status_code=202, data=data, message=message)
-
-    @classmethod
     def paginated(
         cls,
         items: list[Any],

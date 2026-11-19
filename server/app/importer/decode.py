@@ -5,11 +5,11 @@ Steps:
 1. Check for null bytes (binary file).
 2. Try utf-8-sig (handles BOM). If that fails, try cp1252 and set encoding_note.
 3. Return (text, encoding_note).
-
-There is deliberately no application-level file-size cap: large files are
-accepted and processed by the background import pipeline in batches.
 """
 from __future__ import annotations
+
+
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 def decode_file(raw_bytes: bytes, filename: str) -> tuple[str, str | None]:
@@ -26,6 +26,11 @@ def decode_file(raw_bytes: bytes, filename: str) -> tuple[str, str | None]:
     """
     if len(raw_bytes) == 0:
         raise ValueError("The uploaded file is empty.")
+
+    if len(raw_bytes) > MAX_FILE_SIZE:
+        raise ValueError(
+            f"File exceeds the 10 MB size limit ({len(raw_bytes) / 1_048_576:.1f} MB)."
+        )
 
     if b"\x00" in raw_bytes:
         raise ValueError("This does not look like a CSV file (binary/null bytes detected).")
