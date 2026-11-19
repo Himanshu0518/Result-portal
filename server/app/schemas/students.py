@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class StudentListItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     student_id: str
     full_name: str
     email: str
@@ -17,11 +19,10 @@ class StudentListItem(BaseModel):
     grade: str
     pass_fail: str
 
-    class Config:
-        from_attributes = True
-
 
 class StudentDetail(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     student_id: str
     full_name: str
     email: str
@@ -33,14 +34,11 @@ class StudentDetail(BaseModel):
     english: float
     social_studies: float
     second_language: float
-    last_import_id: Optional[int]
+    last_import_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
-    # Computed
+    # Computed fields (not stored in DB; injected by student_service)
     total: float
     percentage: float
     grade: str
     pass_fail: str
-
-    class Config:
-        from_attributes = True

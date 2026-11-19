@@ -29,3 +29,19 @@ uv run fastapi deploy
 
 - [FastAPI Documentation](https://fastapi.tiangolo.com)
 - [FastAPI Cloud](https://fastapicloud.com)
+
+
+# Apply all pending migrations
+uv run alembic upgrade head
+
+# After changing a model, generate a new migration
+uv run alembic revision --autogenerate -m "add student photo_url"
+
+# Roll back one step
+uv run alembic downgrade -1
+
+# See current revision
+uv run alembic current
+
+# See full history
+uv run alembic history --verbose

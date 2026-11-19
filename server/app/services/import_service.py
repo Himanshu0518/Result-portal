@@ -78,58 +78,75 @@ def persist_import(
         return import_record
 
     # --- New import ---
-    # Determine new vs updated vs unchanged.
+    # Determine new vs updated vs unchanged BEFORE writing the Import record,
+    # so the counts are correct when it is first flushed to the DB.
+    # (The CHECK constraint ck_imports_counts_add_up fires on INSERT, not on
+    # a later UPDATE, so we must supply correct values from the start.)
+
+    # Fetch all existing students for the valid IDs in one query.
+    valid_ids = [r.student_id for r in pipeline_result.valid_rows]
+    if valid_ids:
+        existing_students: dict[str, Student] = {
+            s.student_id: s
+            for s in db.query(Student)
+            .filter(Student.student_id.in_(valid_ids))
+            .all()
+        }
+    else:
+        existing_students = {}
+
+    # Pass 1: count new / updated / unchanged without touching the DB yet.
     new_count = 0
     updated_count = 0
     unchanged_count = 0
+    now = datetime.utcnow()
 
-    # Fetch existing student IDs in one query.
-    valid_ids = [r.student_id for r in pipeline_result.valid_rows]
-    if valid_ids:
-        existing_ids = set(
-            row[0]
-            for row in db.query(Student.student_id)
-            .filter(Student.student_id.in_(valid_ids))
-            .all()
-        )
-    else:
-        existing_ids = set()
+    for row in pipeline_result.valid_rows:
+        sid = row.student_id
+        if sid in existing_students:
+            existing_s = existing_students[sid]
+            changed = (
+                existing_s.full_name != row.full_name
+                or existing_s.email != row.email
+                or existing_s.date_of_birth != row.date_of_birth
+                or existing_s.grade_level != row.grade_level
+                or existing_s.section != row.section
+                or existing_s.maths != row.maths
+                or existing_s.science != row.science
+                or existing_s.english != row.english
+                or existing_s.social_studies != row.social_studies
+                or existing_s.second_language != row.second_language
+            )
+            if changed:
+                updated_count += 1
+            else:
+                unchanged_count += 1
+        else:
+            new_count += 1
 
-    # Build a dict of current DB rows to detect unchanged.
-    existing_students: dict[str, Student] = {}
-    if existing_ids:
-        for s in (
-            db.query(Student)
-            .filter(Student.student_id.in_(list(existing_ids)))
-            .all()
-        ):
-            existing_students[s.student_id] = s
-
-    # Create the import record first to get its ID.
     rejected_count = len(set(e.row_number for e in pipeline_result.errors))
+
+    # Pass 2: create the Import record with correct counts, then flush to get its id.
     import_record = Import(
         filename=filename,
         file_sha256=file_sha256,
         size_bytes=size_bytes,
         rows_read=pipeline_result.rows_read,
-        new_count=0,  # will update after upsert
-        updated_count=0,
-        unchanged_count=0,
+        new_count=new_count,
+        updated_count=updated_count,
+        unchanged_count=unchanged_count,
         rejected_count=rejected_count,
         problem_count=len(pipeline_result.errors),
         encoding_note=pipeline_result.encoding_note,
     )
     db.add(import_record)
-    db.flush()  # get import_record.id
+    db.flush()  # satisfies the CHECK constraint; gets import_record.id
 
-    now = datetime.utcnow()
-
-    # Upsert students.
+    # Pass 3: apply the upserts now that we have import_record.id.
     for row in pipeline_result.valid_rows:
         sid = row.student_id
         if sid in existing_students:
             existing_s = existing_students[sid]
-            # Check if anything actually changed.
             changed = (
                 existing_s.full_name != row.full_name
                 or existing_s.email != row.email
@@ -155,9 +172,6 @@ def persist_import(
                 existing_s.second_language = row.second_language
                 existing_s.last_import_id = import_record.id
                 existing_s.updated_at = now
-                updated_count += 1
-            else:
-                unchanged_count += 1
         else:
             db.add(Student(
                 student_id=sid,
@@ -173,14 +187,8 @@ def persist_import(
                 second_language=row.second_language,
                 last_import_id=import_record.id,
             ))
-            new_count += 1
 
-    # Update counts.
-    import_record.new_count = new_count
-    import_record.updated_count = updated_count
-    import_record.unchanged_count = unchanged_count
-
-    # Persist errors.
+    # Persist all row errors.
     for err in pipeline_result.errors:
         db.add(ImportErrorModel(
             import_id=import_record.id,
