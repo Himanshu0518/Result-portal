@@ -46,6 +46,8 @@ from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.core.logging import get_request_id
+
 logger = logging.getLogger(__name__)
 
 
@@ -146,20 +148,22 @@ async def api_error_handler(request: Request, exc: ApiError) -> JSONResponse:
     """
     if exc.status_code >= 500:
         logger.error(
-            "ApiError %s on %s %s: %s",
-            exc.code,
+            "%s %s failed: %s (%s) request=%s",
             request.method,
             request.url.path,
+            exc.code,
             exc.message,
+            get_request_id(request),
             exc_info=exc,
         )
     else:
         logger.warning(
-            "ApiError %s on %s %s: %s",
-            exc.code,
+            "%s %s: %s (%s) request=%s",
             request.method,
             request.url.path,
+            exc.code,
             exc.message,
+            get_request_id(request),
         )
     return exc.to_response()
 
@@ -180,10 +184,11 @@ async def validation_error_handler(
         for err in exc.errors()
     ]
     logger.warning(
-        "RequestValidationError on %s %s: %d field(s)",
+        "%s %s: VALIDATION_ERROR (%d field(s)) request=%s",
         request.method,
         request.url.path,
         len(details),
+        get_request_id(request),
     )
     body: dict[str, Any] = {
         "success": False,
@@ -203,9 +208,10 @@ async def unhandled_error_handler(request: Request, exc: Exception) -> JSONRespo
     so internal details are never leaked.
     """
     logger.error(
-        "Unhandled exception on %s %s",
+        "%s %s: unhandled exception request=%s",
         request.method,
         request.url.path,
+        get_request_id(request),
         exc_info=exc,
     )
     body: dict[str, Any] = {

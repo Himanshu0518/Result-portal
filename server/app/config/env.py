@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "ResultPortal"
     APP_ENV: str = "development"
     DEBUG: bool = True
+    LOG_LEVEL: str = "INFO"
+    SQL_ECHO: bool = False  # echo every SQL statement (very verbose)
     SECRET_KEY: str = "change-me-before-production"
 
     # Database

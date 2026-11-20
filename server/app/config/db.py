@@ -19,7 +19,7 @@ engine = create_engine(
     settings.DATABASE_URL,
     connect_args=connect_args,
     pool_pre_ping=True,
-    echo=settings.DEBUG,  # logs SQL in development; silent in production
+    echo=settings.SQL_ECHO,  # opt-in: each statement logs two multi-line entries
 )
 
 if settings.DATABASE_URL.startswith("sqlite"):

@@ -180,6 +180,12 @@ def test_get_student_not_found(client):
 
 # ── 13. GET /api/students?grade_level=10 — filter ────────────────────────
 
+def test_responses_carry_request_id(client):
+    r = client.get("/api/health")
+    assert r.status_code == 200
+    assert r.headers["X-Request-ID"]
+
+
 def test_filter_students_by_grade_level(client):
     # VALID_ROW uses grade_level=10
     csv_bytes = make_csv(VALID_ROW)
