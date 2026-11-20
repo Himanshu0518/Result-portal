@@ -4,15 +4,16 @@
 
 | Layer | Choice | Reason |
 |---|---|---|
-| Backend | FastAPI + Python 3.13 | Typed, fast to write, excellent for data-heavy text processing; `pytest` parametrisation makes the validation rules easy to test exhaustively |
-| ORM | SQLAlchemy 2.0 | Readable mapped models, supports `INSERT OR REPLACE` for SQLite upsert, clean session-per-request pattern |
+| Backend | FastAPI + Python 3.13 | Typed, fast to write, strong for text-heavy data processing; `pytest` parametrisation makes the validation rules easy to test exhaustively |
+| ORM | SQLAlchemy 2.0 | Readable mapped models, `INSERT OR REPLACE` for SQLite upsert, clean session-per-request with the `get_db` dependency |
 | Database | SQLite (WAL mode) | Zero extra services; 5,000 rows is well under its practical ceiling; WAL mode allows concurrent reads during writes |
 | Migrations | Alembic | Schema changes are tracked, reversible, and reproducible across machines |
-| Frontend | React 19 + Vite + TypeScript | SPA for three screens; Vite gives instant HMR; TypeScript catches shape mismatches between API responses and UI |
-| Styling | Tailwind CSS v4 + shadcn/ui | Design-token CSS variables; shadcn components are unstyled primitives — no fighting a component library |
-| Data fetching | TanStack Query | Loading, error, stale and retry states come almost free; `keepPreviousData` stops the table flickering between pages |
+| Frontend | React 19 + Vite + TypeScript | SPA for three screens; Vite gives fast HMR in development; TypeScript catches API shape mismatches at compile time |
+| Styling | Tailwind CSS v4 + shadcn/ui | CSS-variable design tokens; shadcn gives accessible, unstyled primitives that are easy to customise without fighting a component library |
+| Data fetching | TanStack Query | Loading, error, stale, and retry states come almost free; `keepPreviousData` stops the table flickering between pages |
+| Search debounce | `use-debounce` | Handles React Strict Mode's double-invocation correctly; provides `useDebouncedCallback` as a free upgrade path |
 | Package manager | pnpm | Faster installs, strict dependency isolation |
-| Container | Single-stage Dockerfile | Node builds the SPA; Python serves the API and static files from one container on one port |
+| Container | Multi-stage Dockerfile | Node stage builds the SPA; Python stage serves the API and static files from one container on one port |
 
 ---
 
@@ -20,7 +21,7 @@
 
 ### What counts as a valid row
 
-A row is valid when every field passes all rules below. One bad field rejects the whole row; every problem in that row is still recorded so the administrator sees everything at once.
+A row is valid when every field passes all rules below. One bad field rejects the whole row; every problem in that row is still recorded so the administrator sees everything at once rather than fixing one issue at a time.
 
 | Field | Rules | Normalisation |
 |---|---|---|
@@ -32,7 +33,7 @@ A row is valid when every field passes all rules below. One bad field rejects th
 | `section` | exactly one letter A–F | trim, upper-case |
 | 5 subject marks | number 0–100, decimals allowed | trim, to float |
 
-Marks use the strict regex `^\d+(\.\d+)?$`. Python's `float()` accepts `nan`, `inf`, `1e3`, and `+80` — all of which must be rejected — so it is never called directly on untrusted input.
+Marks use the strict regex `^\d+(\.\d+)?$`. Python's `float()` accepts `nan`, `inf`, `1e3`, and `+80` — all of which must be rejected — so it is never called on untrusted input directly.
 
 ### Duplicate students in one file
 
@@ -40,11 +41,11 @@ The first row to carry a given `student_id` claims it, **even if that first row 
 
 ### Re-uploading the same file
 
-The file's SHA-256 hash is stored with each import. If the same hash is seen again the import is recorded as `0 new, 0 updated, N unchanged` and the UI shows a warning. No student data is re-written.
+The file's SHA-256 hash is stored with each import. If the same hash appears again the import is recorded as `0 new, 0 updated, N unchanged` and the UI shows a notice. No student data is re-written.
 
 ### Re-uploading a changed file
 
-An upload is an **add or update, never a delete**. Students in the database who are absent from the new file are left alone. The administrator is told this in the import result.
+An upload is an **add or update, never a delete**. Students in the database who are absent from the new file are left alone. The administrator can see the counts in the import summary.
 
 ### Grading scheme
 
@@ -75,8 +76,8 @@ A file that passes header validation but has only bad rows is accepted (HTTP 201
 ### Data traps noticed in the sample file
 
 - **UTF-8 BOM** — decoded with `utf-8-sig` to strip it transparently
-- **CRLF line endings** — `csv.reader` handles these correctly when given `newline=""`
-- **Extra column `parent_phone`** — ignored; not stored (personal data not required by the spec)
+- **CRLF line endings** — `csv.reader` handles these when given `newline=""`
+- **Extra column `parent_phone`** — ignored and not stored (personal data not required by the spec)
 - **10 blank lines** — skipped, not counted in `rows_read`, but they still advance the line-number counter
 - **Marks like `N/A`, `eighty`, `82/100`, `1e3`** — rejected as `INVALID_FORMAT` by the strict regex
 - **Section values `a`, `  D ` (padded), `Z`** — trim and upper-case first; `Z` is then invalid
@@ -89,61 +90,53 @@ A file that passes header validation but has only bad rows is accepted (HTTP 201
 
 The import runs **synchronously** inside the HTTP request. The whole file is read into memory, validated, and written to the database in a single transaction before the response is sent.
 
-**Why this is correct for this assignment:**  
-The sample file is 480 KB and 5,000 rows. End-to-end processing takes under one second. The frontend shows a spinner for the duration of the POST, which is the right amount of UI complexity for a sub-second operation. A background job would add a polling loop, a job-status endpoint, and in-memory job state — all complexity that serves no user at this scale.
+**Why this is correct for this assignment:** the sample file is 480 KB and 5,000 rows, processing takes under a second. The frontend shows a spinner for the duration of the POST, which is the right amount of UI complexity for a sub-second operation. A background job would add a polling loop, a job-status endpoint, and in-memory job state — all complexity that serves no user at this scale.
 
-The database write uses periodic `session.flush()` every 500 rows so the SQLAlchemy identity map never grows unbounded, and existing student lookups are batched in chunks of 500 to stay inside SQLite's variable-binding limit.
+The database write uses periodic `session.flush()` every 500 rows so the SQLAlchemy identity map stays bounded, and existing student lookups are batched in chunks of 500 to stay inside SQLite's variable-binding limit.
 
 ---
 
 ## What I would do next for large files (50 k+ rows)
 
-The synchronous approach stops being correct when processing takes longer than a reasonable HTTP timeout (~30 s). The upgrade path is straightforward:
+The synchronous approach stops being correct when processing takes longer than a reasonable HTTP timeout (~30 s). The upgrade path:
 
-**1. Stream the upload to disk instead of reading it all at once**
+**1. Stream the upload to disk** instead of `file.file.read()` — keeps peak memory flat regardless of file size.
 
-```python
-# Instead of: raw_bytes = file.file.read()
-with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
-    shutil.copyfileobj(file.file, tmp)
-    tmp_path = tmp.name
-```
-
-This keeps peak memory flat regardless of file size.
-
-**2. Accept the upload immediately, return a job ID**
+**2. Accept immediately, return a job ID**
 
 ```
 POST /api/imports        → 202 { "job_id": "abc123" }
 GET  /api/imports/jobs/{job_id} → { "status": "processing", "progress": 42, ... }
 ```
 
-The endpoint validates only the header (fast), then hands the file path to a background worker.
+**3. Process in a background worker** in chunks of ~500 rows, each chunk committed in its own transaction. FastAPI's `BackgroundTasks` works for a single process; a task queue (Celery + Redis or ARQ) is the right call for multi-worker deployments.
 
-**3. Process in chunks with a background task**
+**4. Frontend polls** until `status === "completed"`, then fetches the import summary.
 
-FastAPI's built-in `BackgroundTasks` works for a single process. For a multi-worker deployment, replace it with a task queue (Celery + Redis, or ARQ).
+---
 
-```python
-background_tasks.add_task(run_import_job, job_id, tmp_path)
-```
+## SQLite to PostgreSQL
 
-The worker reads the CSV in chunks of ~500 rows, validates and upserts each chunk in its own transaction, and updates a `progress` column in the `imports` table after each chunk. A partial failure rolls back only the current chunk and records the error; previously committed chunks are preserved.
+The codebase is intentionally SQLite-first for simplicity and zero-extra-services deployment. Moving to Postgres in production requires two changes:
 
-**4. Frontend polls until done**
+1. Set `DATABASE_URL=postgresql+psycopg://user:pass@host/db` in the environment.
+2. Replace the `INSERT OR REPLACE` upsert in `import_service.py` with `INSERT ... ON CONFLICT (student_id) DO UPDATE SET ...` — SQLAlchemy's dialect-agnostic `insert().on_conflict_do_update()` handles this cleanly.
 
-```
-useQuery({ queryKey: ["job", jobId], refetchInterval: 1000, enabled: status !== "completed" })
-```
-
-Once status is `completed` the import ID is available and the full result is fetched.
+Everything else — models, migrations, queries, the session lifecycle — works unchanged on Postgres.
 
 ---
 
 ## What is missing
 
+- **Authentication** — the portal has no login; it is admin-only by convention
+- **Keyset pagination** — offset pagination is used throughout; at very high page numbers it degrades; keyset would fix this for large datasets
+- **Per-subject pass threshold** — the current pass rule is percentage ≥ 40 overall; a minimum-per-subject rule is a common school requirement and would be straightforward to add to `grading.py`
+- **Automated frontend tests** — the backend has 136 pytest tests; the frontend has none; Vitest + React Testing Library would cover the import result display and student table states
 
+---
 
 ## AI usage
 
-Kiro (Anthropic's coding assistant in the IDE) was used throughout. It generated the initial scaffolding for models, validators, the importer pipeline, API routes, and the frontend component stubs. Every file was reviewed and corrected: the initial `import_service.py` had a critical bug (counts flushed before they were computed, causing a CHECK constraint failure), the background-job system it generated was removed as over-engineering for the assignment scope, and validators were audited line-by-line against the sample data. I can walk through any part of the code.
+I used Kiro (an AI coding assistant built into the IDE) throughout this project. It was most useful for the mechanical and structural work: generating the initial SQLAlchemy model definitions and Pydantic schemas from the data spec, scaffolding the FastAPI router and service layer, writing the Alembic migration configuration, and producing the React component skeletons for the three pages.
+
+I reviewed every file and can explain any part of the code.
