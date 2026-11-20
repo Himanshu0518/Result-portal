@@ -4,6 +4,7 @@ import time
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -13,7 +14,10 @@ from app.core import (
     validation_error_handler,
     unhandled_error_handler,
 )
+from contextlib import asynccontextmanager
+from app.config.db import Base, engine
 from app.core.logging import configure_logging, new_request_id
+from app.config.env import settings
 from app.api import router as api_router
 
 # Configure logging before anything else runs so startup output is consistent.
@@ -21,7 +25,32 @@ configure_logging()
 
 logger = logging.getLogger("app.request")
 
-app = FastAPI(title="Result Portal API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Initializing database tables...")
+
+    # Import/register all models before creating tables.
+    from app.models import Student, Import, ImportError
+
+    Base.metadata.create_all(bind=engine)
+
+    logger.info("Database initialization completed.")
+    yield
+
+
+app = FastAPI(
+    title="Result Portal API",
+    lifespan=lifespan,
+)
+# The SPA is served from Vercel, so browsers call this API cross-origin.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
+)
 
 
 # ── Request logging ───────────────────────────────────────────────────────────

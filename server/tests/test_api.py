@@ -186,6 +186,11 @@ def test_responses_carry_request_id(client):
     assert r.headers["X-Request-ID"]
 
 
+def test_cors_allows_configured_origin(client):
+    r = client.get("/api/health", headers={"Origin": "http://localhost:5173"})
+    assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
 def test_filter_students_by_grade_level(client):
     # VALID_ROW uses grade_level=10
     csv_bytes = make_csv(VALID_ROW)
