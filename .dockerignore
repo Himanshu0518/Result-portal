@@ -1,0 +1,33 @@
+# Dependencies & virtual environments
+node_modules/
+.venv/
+
+# Build artifacts (rebuilt inside Docker)
+client/dist/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# SQLite database (created at runtime via migrations)
+server/data/
+
+# Version control
+.git/
+.gitignore
+
+# Environment files
+.env
+.env.*
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
