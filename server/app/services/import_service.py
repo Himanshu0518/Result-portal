@@ -9,7 +9,7 @@ Handles:
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -93,7 +93,7 @@ def persist_import(
     new_count = 0
     updated_count = 0
     unchanged_count = 0
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     for row in pipeline_result.valid_rows:
         sid = row.student_id
