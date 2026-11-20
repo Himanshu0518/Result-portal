@@ -35,6 +35,12 @@ export type Envelope<T> = {
   meta?: PaginatedMeta
 }
 
+/**
+ * Public origin of the API, e.g. https://result-portal-api.onrender.com.
+ * Empty in development: Vite proxies /api to localhost:8000 (see vite.config.ts).
+ */
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
+
 type ErrorEnvelope = {
   success?: false
   error?: {
@@ -48,7 +54,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<Envelope<T>
   let response: Response
 
   try {
-    response = await fetch(`/api${path}`, init)
+    response = await fetch(`${API_BASE}/api${path}`, init)
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
     throw new ApiError(
