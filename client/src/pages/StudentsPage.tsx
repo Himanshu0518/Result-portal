@@ -44,7 +44,7 @@ export default function StudentsPage() {
   const pageSize = parsePageSize(searchParams.get('page_size'))
 
   const [input, setInput] = useState(q)
-  const debouncedInput = useDebouncedValue(input, 300)
+  const debouncedInput = useDebouncedValue(input, 500)
 
   const hasFilters = Boolean(q) || gradeLevel !== undefined
 
