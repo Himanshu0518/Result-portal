@@ -15,6 +15,7 @@ from typing import Generator
 import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
 
 # Ensure the server package is importable
@@ -31,9 +32,13 @@ from main import app
 
 @pytest.fixture()
 def test_engine():
+    # StaticPool forces all ORM sessions to reuse the same underlying
+    # SQLite connection, so the in-memory database created by create_all()
+    # is visible to every subsequent query within the same test.
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
     # Enable foreign keys for SQLite
     @event.listens_for(engine, "connect")
