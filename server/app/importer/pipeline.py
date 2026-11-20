@@ -72,10 +72,7 @@ def process_file(
     Raises ValueError for file-level errors (caller maps these to HTTP 422).
     Never raises for row-level errors; they go into PipelineResult.errors.
     """
-    # 1. Decode.
     text, encoding_note = decode_file(raw_bytes, filename)
-
-    # 2. Parse header + get row iterator.
     _header, row_iter = parse_csv(text)
 
     result = PipelineResult(encoding_note=encoding_note)
@@ -90,7 +87,6 @@ def process_file(
         had_any_data_row = True
         result.rows_read += 1
 
-        # --- Wrong field count ---
         if len(raw_fields) != num_expected:
             result.errors.append(RowError(
                 row_number=row_number,
@@ -104,13 +100,11 @@ def process_file(
             ))
             continue
 
-        # Extract raw values by column index.
         def get(col: str) -> str:
             return raw_fields[col_index[col]]
 
         raw_id = get("student_id").strip().upper()
 
-        # --- Duplicate ID check (before validation, first row claims the ID) ---
         if raw_id:
             if raw_id in claimed_ids:
                 result.errors.append(RowError(
@@ -124,10 +118,8 @@ def process_file(
                     ),
                 ))
                 continue
-            # Claim the ID regardless of whether this row will pass validation.
             claimed_ids[raw_id] = row_number
 
-        # --- Per-field validation ---
         row_errors: list[RowError] = []
 
         norm_id, err = validate_student_id(get("student_id"))

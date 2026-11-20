@@ -40,15 +40,13 @@ def persist_import(
     file_sha256 = _sha256(raw_bytes)
     size_bytes = len(raw_bytes)
 
-    # --- Check for re-upload (same sha256) ---
     existing = (
         db.query(Import)
         .filter(Import.file_sha256 == file_sha256)
         .first()
     )
     if existing is not None:
-        # Idempotent re-upload: return a synthetic summary.
-        # We don't re-write the DB; just describe what's already there.
+        # Idempotent re-upload: return a synthetic summary without re-writing the DB.
         unchanged = len(pipeline_result.valid_rows)
         import_record = Import(
             filename=filename,
@@ -77,13 +75,10 @@ def persist_import(
         db.commit()
         return import_record
 
-    # --- New import ---
     # Determine new vs updated vs unchanged BEFORE writing the Import record,
     # so the counts are correct when it is first flushed to the DB.
     # (The CHECK constraint ck_imports_counts_add_up fires on INSERT, not on
     # a later UPDATE, so we must supply correct values from the start.)
-
-    # Fetch all existing students for the valid IDs in one query.
     valid_ids = [r.student_id for r in pipeline_result.valid_rows]
     if valid_ids:
         existing_students: dict[str, Student] = {
@@ -95,7 +90,6 @@ def persist_import(
     else:
         existing_students = {}
 
-    # Pass 1: count new / updated / unchanged without touching the DB yet.
     new_count = 0
     updated_count = 0
     unchanged_count = 0
@@ -126,7 +120,6 @@ def persist_import(
 
     rejected_count = len(set(e.row_number for e in pipeline_result.errors))
 
-    # Pass 2: create the Import record with correct counts, then flush to get its id.
     import_record = Import(
         filename=filename,
         file_sha256=file_sha256,
@@ -140,9 +133,8 @@ def persist_import(
         encoding_note=pipeline_result.encoding_note,
     )
     db.add(import_record)
-    db.flush()  # satisfies the CHECK constraint; gets import_record.id
+    db.flush()
 
-    # Pass 3: apply the upserts now that we have import_record.id.
     for row in pipeline_result.valid_rows:
         sid = row.student_id
         if sid in existing_students:
@@ -188,7 +180,6 @@ def persist_import(
                 last_import_id=import_record.id,
             ))
 
-    # Persist all row errors.
     for err in pipeline_result.errors:
         db.add(ImportErrorModel(
             import_id=import_record.id,

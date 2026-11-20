@@ -33,12 +33,12 @@ SUBJECTS = ("maths", "science", "english", "social_studies", "second_language")
 class Student(Base):
     __tablename__ = "students"
 
-    student_id: Mapped[str] = mapped_column(String(20), primary_key=True)  # always UPPER-CASE
+    student_id: Mapped[str] = mapped_column(String(20), primary_key=True)
     full_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    email: Mapped[str] = mapped_column(String(254), nullable=False, index=True)  # always lower-case
+    email: Mapped[str] = mapped_column(String(254), nullable=False, index=True)
     date_of_birth: Mapped[date] = mapped_column(Date, nullable=False)
     grade_level: Mapped[int] = mapped_column(Integer, nullable=False)
-    section: Mapped[str] = mapped_column(String(1), nullable=False)  # A-F, upper-case
+    section: Mapped[str] = mapped_column(String(1), nullable=False)
 
     maths: Mapped[float] = mapped_column(Float, nullable=False)
     science: Mapped[float] = mapped_column(Float, nullable=False)

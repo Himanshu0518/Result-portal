@@ -39,10 +39,9 @@ class Import(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    file_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)  # detects re-uploads
+    file_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    # Row-level counters (blank lines excluded from rows_read per spec).
     rows_read: Mapped[int] = mapped_column(Integer, nullable=False)
     new_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     updated_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -95,14 +94,10 @@ class ImportError(Base):
     import_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("imports.id", ondelete="CASCADE"), nullable=False
     )
-    # File line number; header = 1; blank lines still advance this counter.
     row_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    # Raw value from the file — may be junk or blank; NULL means the whole row failed.
     student_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    # Which column caused the problem; NULL means the whole row (e.g. WRONG_FIELD_COUNT).
     field: Mapped[str | None] = mapped_column(String(32), nullable=True)
     code: Mapped[str] = mapped_column(String(20), nullable=False)
-    # Plain-English message shown directly in the admin UI.
     message: Mapped[str] = mapped_column(String(500), nullable=False)
 
     import_: Mapped["Import"] = relationship(back_populates="errors")

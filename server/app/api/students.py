@@ -30,9 +30,6 @@ def search_students(
     items, total = list_students(
         db, q=q, grade_level=grade_level, page=page, page_size=page_size
     )
-    # items are dicts from student_service with computed grade fields already injected.
-    # Validate through schema so we get consistent field ordering and type coercion,
-    # then dump with mode="json" to serialise date/datetime to ISO strings.
     serialised = [
         StudentListItem.model_validate(item).model_dump(mode="json")
         for item in items

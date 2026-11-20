@@ -80,13 +80,11 @@ def validate_email(raw: str) -> tuple[Optional[str], Optional[tuple]]:
 def _parse_date(raw: str) -> Optional[date]:
     """Try YYYY-MM-DD then DD/MM/YYYY. Return None if neither matches."""
     s = raw.strip()
-    # YYYY-MM-DD
     if re.match(r'^\d{4}-\d{2}-\d{2}$', s):
         try:
             return date.fromisoformat(s)
         except ValueError:
             return None
-    # DD/MM/YYYY
     if re.match(r'^\d{2}/\d{2}/\d{4}$', s):
         try:
             day, month, year = s.split('/')
@@ -111,7 +109,6 @@ def validate_date_of_birth(
             "INVALID_FORMAT",
             f"'{val}' is not a valid date. Use YYYY-MM-DD or DD/MM/YYYY.",
         )
-    # Age calculation: how old are they today?
     age = (
         today.year - parsed.year
         - ((today.month, today.day) < (parsed.month, parsed.day))
