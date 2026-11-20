@@ -10,6 +10,7 @@ dependencies = [
     "aiosqlite>=0.20",          # only needed if you use async SQLAlchemy later
     "psycopg[binary]>=3.3.9",
     "alembic>=1.20.1",
+    "faker>=25.0",
 ]
 
 [dependency-groups]
