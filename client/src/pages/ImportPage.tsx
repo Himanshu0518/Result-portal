@@ -1,4 +1,5 @@
 import { useRef, useState, type ChangeEvent, type DragEvent } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { FileText, Loader2, RotateCcw, Upload, X } from 'lucide-react'
 import ImportOutcome from '@/components/import/ImportOutcome'
 import Notice from '@/components/Notice'
@@ -27,25 +28,38 @@ export default function ImportPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
-  const [uploading, setUploading] = useState(false)
   const [clientError, setClientError] = useState<string | null>(null)
-  const [uploadError, setUploadError] = useState<string | null>(null)
   const [result, setResult] = useState<ImportResult | null>(null)
+  const queryClient = useQueryClient()
+
+  const upload = useMutation({
+    mutationFn: uploadCsv,
+    onSuccess: response => {
+      setResult(response.data)
+      setFile(null)
+      // An import rewrites students, so every cached directory and report page
+      // in this session is stale.
+      queryClient.invalidateQueries({ queryKey: ['students'] })
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    },
+  })
+
+  const uploading = upload.isPending
+  const uploadError = upload.error ? getErrorMessage(upload.error) : null
 
   function chooseFile(picked: File | null) {
     if (!picked) return
 
+    upload.reset()
     const problem = validateFile(picked)
     if (problem) {
       setFile(null)
       setClientError(problem)
-      setUploadError(null)
       return
     }
 
     setFile(picked)
     setClientError(null)
-    setUploadError(null)
     setResult(null)
   }
 
@@ -65,29 +79,16 @@ export default function ImportPage() {
     if (!uploading) fileInputRef.current?.click()
   }
 
-  async function handleUpload() {
+  function handleUpload() {
     if (!file || uploading) return
-
-    setUploading(true)
-    setUploadError(null)
-
-    try {
-      const response = await uploadCsv(file)
-      setResult(response.data)
-      setFile(null)
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    } catch (error) {
-      setUploadError(getErrorMessage(error))
-    } finally {
-      setUploading(false)
-    }
+    upload.mutate(file)
   }
 
   function reset() {
+    upload.reset()
     setFile(null)
     setResult(null)
     setClientError(null)
-    setUploadError(null)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -146,10 +147,7 @@ export default function ImportPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        setFile(null)
-                        setUploadError(null)
-                      }}
+                      onClick={() => setFile(null)}
                       disabled={uploading}
                       aria-label="Remove selected file"
                       className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"

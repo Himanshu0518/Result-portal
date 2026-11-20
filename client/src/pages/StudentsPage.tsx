@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { AlertCircle, Loader2, Search, Upload, Users, X } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { GradeBadge, ResultBadge } from '@/components/GradeBadge'
@@ -11,9 +12,8 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useApiQuery } from '@/hooks/useApiQuery'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
-import { fetchStudents, type StudentListItem } from '@/lib/api'
+import { fetchStudents, toApiError } from '@/lib/api'
 import { formatMark, formatNumber, formatPercent } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -70,14 +70,25 @@ export default function StudentsPage() {
     )
   }, [debouncedInput, q, setSearchParams])
 
-  const { data, meta, loading, error, refetch } = useApiQuery<StudentListItem[]>(
-    `students:${q}|${gradeLevel ?? 'all'}|${page}|${pageSize}`,
-    signal =>
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ['students', 'list', { q, gradeLevel, page, pageSize }],
+    queryFn: ({ signal }) =>
       fetchStudents({ q: q || undefined, gradeLevel, page, pageSize }, signal),
-  )
+    // Keep the current page on screen while the next one loads.
+    placeholderData: keepPreviousData,
+  })
 
-  const students = data ?? []
+  const students = data?.data ?? []
+  const meta = data?.meta ?? null
   const total = meta?.total ?? 0
+  const loading = isPending || isFetching
+  const error = queryError ? toApiError(queryError) : null
 
   // If the URL points past the last page (deep link, deleted filter), correct it.
   useEffect(() => {
@@ -251,7 +262,7 @@ export default function StudentsPage() {
               title="Could not load students"
               description={error.message}
               action={
-                <Button type="button" variant="outline" size="sm" onClick={refetch}>
+                <Button type="button" variant="outline" size="sm" onClick={() => refetch()}>
                   Try again
                 </Button>
               }
@@ -265,7 +276,7 @@ export default function StudentsPage() {
                 title="These results may be out of date"
                 className="mb-3"
                 action={
-                  <Button type="button" variant="outline" size="sm" onClick={refetch}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => refetch()}>
                     Retry
                   </Button>
                 }

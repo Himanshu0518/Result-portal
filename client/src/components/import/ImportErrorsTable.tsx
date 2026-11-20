@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { AlertCircle, CheckCircle2, Download, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -6,8 +7,7 @@ import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import Pagination from '@/components/Pagination'
 import StateCard from '@/components/StateCard'
-import { useApiQuery } from '@/hooks/useApiQuery'
-import { fetchImportErrors, getErrorMessage, type ImportRowError } from '@/lib/api'
+import { fetchImportErrors, getErrorMessage, toApiError, type ImportRowError } from '@/lib/api'
 import { fieldLabel, formatNumber } from '@/lib/format'
 
 const PAGE_SIZE = 25
@@ -47,21 +47,26 @@ export default function ImportErrorsTable({
   problemCount,
 }: ImportErrorsTableProps) {
   const [page, setPage] = useState(1)
-  const [downloading, setDownloading] = useState(false)
-  const [downloadError, setDownloadError] = useState<string | null>(null)
 
-  const { data, meta, loading, error, refetch } = useApiQuery<ImportRowError[]>(
-    `import:${importId}:errors:${page}`,
-    signal => fetchImportErrors(importId, page, PAGE_SIZE, signal),
-  )
+  const {
+    data,
+    isFetching,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ['imports', importId, 'errors', page],
+    queryFn: ({ signal }) => fetchImportErrors(importId, page, PAGE_SIZE, signal),
+    placeholderData: keepPreviousData,
+  })
 
-  const totalProblems = meta?.total ?? problemCount
+  const errors = data?.data ?? []
+  const totalProblems = data?.meta?.total ?? problemCount
+  const loading = isFetching
+  const error = queryError ? toApiError(queryError) : null
 
-  async function downloadReport() {
-    setDownloading(true)
-    setDownloadError(null)
-
-    try {
+  // The whole error list is paged, so it is fetched on demand rather than cached.
+  const download = useMutation({
+    mutationFn: async () => {
       const all: ImportRowError[] = []
       let nextPage = 1
       let total = problemCount
@@ -74,9 +79,10 @@ export default function ImportErrorsTable({
         nextPage += 1
       }
 
-      const blob = new Blob([`\uFEFF${buildErrorCsv(all)}`], {
-        type: 'text/csv;charset=utf-8;',
-      })
+      return buildErrorCsv(all)
+    },
+    onSuccess: csv => {
+      const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
@@ -85,12 +91,8 @@ export default function ImportErrorsTable({
       link.click()
       link.remove()
       URL.revokeObjectURL(url)
-    } catch (downloadFailure) {
-      setDownloadError(getErrorMessage(downloadFailure))
-    } finally {
-      setDownloading(false)
-    }
-  }
+    },
+  })
 
   if (rejectedCount === 0) {
     return (
@@ -131,19 +133,21 @@ export default function ImportErrorsTable({
           type="button"
           variant="outline"
           size="sm"
-          onClick={downloadReport}
-          disabled={downloading}
+          onClick={() => download.mutate()}
+          disabled={download.isPending}
         >
-          {downloading ? (
+          {download.isPending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
             <Download className="h-3.5 w-3.5" />
           )}
-          {downloading ? 'Preparing…' : 'Download CSV'}
+          {download.isPending ? 'Preparing…' : 'Download CSV'}
         </Button>
       </div>
 
-      {downloadError && <p className="mt-2 text-xs text-rose-600">{downloadError}</p>}
+      {download.error && (
+        <p className="mt-2 text-xs text-rose-600">{getErrorMessage(download.error)}</p>
+      )}
 
       <Card className="mt-3 overflow-hidden">
         {error ? (
@@ -153,7 +157,7 @@ export default function ImportErrorsTable({
             title="Could not load the problem rows"
             description={error.message}
             action={
-              <Button type="button" variant="outline" size="sm" onClick={refetch}>
+              <Button type="button" variant="outline" size="sm" onClick={() => refetch()}>
                 Try again
               </Button>
             }
@@ -223,7 +227,7 @@ export default function ImportErrorsTable({
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {(data ?? []).map(problem => (
+                  {errors.map(problem => (
                     <tr key={problem.id} className="align-top transition-colors hover:bg-muted/30">
                       <td className="px-4 py-3 font-mono text-xs tabular text-muted-foreground">
                         {problem.row_number}

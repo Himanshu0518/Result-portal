@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import {
   ArrowLeft,
   CalendarDays,
@@ -14,8 +15,7 @@ import { ResultBadge } from '@/components/GradeBadge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useApiQuery } from '@/hooks/useApiQuery'
-import { fetchStudent, type StudentDetail } from '@/lib/api'
+import { fetchStudent, toApiError } from '@/lib/api'
 import { formatDate, formatMark, formatPercent, SUBJECTS } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -52,10 +52,20 @@ export default function StudentReportPage() {
   const { studentId } = useParams<{ studentId: string }>()
   const id = (studentId ?? '').trim().toUpperCase()
 
-  const { data: student, loading, error, refetch } = useApiQuery<StudentDetail>(
-    id ? `student:${id}` : null,
-    signal => fetchStudent(id, signal),
-  )
+  const {
+    data,
+    isPending,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ['students', 'detail', id],
+    queryFn: ({ signal }) => fetchStudent(id, signal),
+    enabled: Boolean(id),
+  })
+
+  const student = data?.data ?? null
+  const loading = Boolean(id) && isPending
+  const error = queryError ? toApiError(queryError) : null
 
   return (
     <div>
@@ -100,7 +110,7 @@ export default function StudentReportPage() {
           tone="danger"
           title="Could not load this report"
           action={
-            <Button type="button" variant="outline" size="sm" onClick={refetch}>
+            <Button type="button" variant="outline" size="sm" onClick={() => refetch()}>
               Try again
             </Button>
           }
